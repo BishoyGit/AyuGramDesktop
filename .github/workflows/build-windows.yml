@@ -54,6 +54,7 @@ jobs:
             }
           }
           Write-Host "ATL available for all toolsets."
+          exit 0
 
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
