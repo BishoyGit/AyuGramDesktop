@@ -139,6 +139,12 @@ public:
 private:
 	struct Waiter;
 
+	// AI notification filter: replays the stock alert (flash + sound) for
+	// a notification that was held by the filter and just passed.
+	void playDeferredAlert(
+		not_null<Data::Thread*> thread,
+		not_null<HistoryItem*> item);
+
 	struct SkipState {
 		enum Value {
 			Unknown,

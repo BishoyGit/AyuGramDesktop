@@ -56,6 +56,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 // AyuGram includes
 #include "ayu/ayu_settings.h"
+#include "ayu/ai_notify/ai_notify_filter.h"
 #include "ayu/utils/telegram_helpers.h"
 
 
@@ -215,6 +216,13 @@ System::System()
 : _waitTimer([=] { showNext(); })
 , _waitForAllGroupedTimer([=] { showGrouped(); })
 , _manager(std::make_unique<DummyManager>(this)) {
+	// AI notification filter: the gate holds toasts until an LLM verdict
+	// arrives and asks us to play the deferred alert sound on pass.
+	Ayu::AiNotify::Gate::Instance().SetSoundPlayer([=](
+			not_null<Data::Thread*> thread,
+			not_null<HistoryItem*> item) {
+		playDeferredAlert(thread, item);
+	});
 	settingsChanged(
 	) | rpl::on_next([=](ChangeType type) {
 		if (type == ChangeType::DesktopEnabled) {
@@ -457,6 +465,11 @@ void System::schedule(Data::ItemNotification notification) {
 		thread->popNotification(notification);
 		return;
 	}
+	// AI notification filter: cheap local decision before anything is
+	// scheduled. Block = no sound, no toast. Ask = the LLM will judge, so
+	// the alert (sound/flash) must NOT fire on its own — the gate plays it
+	// if the verdict allows the notification through.
+	const auto aiDecision = Ayu::AiNotify::Gate::Instance().PreRegister(item);
 	const auto ready = (skip.value != SkipState::Unknown)
 		&& item->notificationReady();
 
@@ -471,8 +484,14 @@ void System::schedule(Data::ItemNotification notification) {
 		? item->specialNotificationPeer()
 		: notification.reactionOrVoteSender;
 	if (!skip.silent) {
-		registerThread(thread);
-		_whenAlerts[thread].emplace(timing.when, notifyBy);
+		const auto toastsPossible = Core::App().settings().desktopNotify()
+			&& !_manager->skipToast();
+		const auto gateWantsToJudge
+			= (aiDecision == Ayu::AiNotify::PreDecision::Ask) && toastsPossible;
+		if (!gateWantsToJudge) {
+			registerThread(thread);
+			_whenAlerts[thread].emplace(timing.when, notifyBy);
+		}
 	}
 	if (const auto user = item->history()->peer->asUser()) {
 		if (user->hasStarsPerMessage()
@@ -509,6 +528,7 @@ void System::schedule(Data::ItemNotification notification) {
 }
 
 void System::clearAll() {
+	Ayu::AiNotify::Gate::Instance().CancelAll();
 	if (_manager) {
 		_manager->clearAll();
 	}
@@ -525,6 +545,7 @@ void System::clearAll() {
 }
 
 void System::clearFromTopic(not_null<Data::ForumTopic*> topic) {
+	Ayu::AiNotify::Gate::Instance().CancelTopic(topic);
 	if (_manager) {
 		_manager->clearFromTopic(topic);
 	}
@@ -542,6 +563,7 @@ void System::clearFromTopic(not_null<Data::ForumTopic*> topic) {
 }
 
 void System::clearFromSublist(not_null<Data::SavedSublist*> sublist) {
+	Ayu::AiNotify::Gate::Instance().CancelSublist(sublist);
 	if (_manager) {
 		_manager->clearFromSublist(sublist);
 	}
@@ -601,6 +623,7 @@ void System::clearForThreadIf(Fn<bool(not_null<Data::Thread*>)> predicate) {
 }
 
 void System::clearFromHistory(not_null<History*> history) {
+	Ayu::AiNotify::Gate::Instance().CancelHistory(history);
 	if (_manager) {
 		_manager->clearFromHistory(history);
 	}
@@ -610,6 +633,7 @@ void System::clearFromHistory(not_null<History*> history) {
 }
 
 void System::clearFromSession(not_null<Main::Session*> session) {
+	Ayu::AiNotify::Gate::Instance().CancelSession(session);
 	if (_manager) {
 		_manager->clearFromSession(session);
 	}
@@ -644,12 +668,14 @@ void System::clearIncomingFromSublist(
 }
 
 void System::clearFromItem(not_null<HistoryItem*> item) {
+	Ayu::AiNotify::Gate::Instance().CancelItem(item);
 	if (_manager) {
 		_manager->clearFromItem(item);
 	}
 }
 
 void System::clearAllFast() {
+	Ayu::AiNotify::Gate::Instance().CancelAll();
 	if (_manager) {
 		_manager->clearAllFast();
 	}
@@ -1560,6 +1586,11 @@ void Manager::maybePlaySound(Fn<void()> playSound) {
 }
 
 void NativeManager::doShowNotification(NotificationFields &&fields) {
+	// AI notification filter: returns true when the gate suppressed the
+	// toast or holds it for an LLM verdict (it will re-show it on pass).
+	if (Ayu::AiNotify::Gate::Instance().GateToast(fields)) {
+		return;
+	}
 	const auto pollVote = !fields.pollVoteOption.isEmpty();
 	const auto type = fields.reactionFrom
 		? (pollVote
@@ -1678,7 +1709,52 @@ bool NativeManager::forceHideDetails() const {
 	return Core::App().screenIsLocked();
 }
 
-System::~System() = default;
+void System::playDeferredAlert(
+		not_null<Data::Thread*> thread,
+		not_null<HistoryItem*> item) {
+	const auto &settings = Core::App().settings();
+	if (!settings.soundNotify()) {
+		return;
+	}
+	const auto soundId = MaybeSoundFor(
+		thread,
+		item->specialNotificationPeer());
+	if (!soundId) {
+		return;
+	}
+	if (settings.flashBounceNotify()) {
+		const auto peer = thread->peer();
+		if (const auto window = Core::App().windowFor(peer)) {
+			if (const auto controller = window->sessionController()) {
+				_manager->maybeFlashBounce(crl::guard(controller, [=] {
+					if (const auto handle = window->widget()->windowHandle()) {
+						handle->alert(kSystemAlertDuration);
+					}
+				}));
+			}
+		}
+	}
+	const auto owner = &thread->owner();
+	auto volume = owner->session().settings().ringtoneVolume(
+		thread->peer()->id,
+		thread->topicRootId(),
+		thread->monoforumPeerId());
+	if (!volume) {
+		volume = owner->session().settings().ringtoneVolume(
+			Data::DefaultNotifyType(thread->peer()));
+	}
+	_manager->maybePlaySound(crl::guard(&owner->session(), [=] {
+		const auto track = lookupSound(owner, *soundId);
+		track->playOnce(volume ? volume * 0.01 : 0);
+		Media::Player::mixer()->suppressAll(track->getLengthMs());
+		Media::Player::mixer()->scheduleFaderCallback();
+	}));
+}
+
+System::~System() {
+	// Detach the AI notification filter before our members die.
+	Ayu::AiNotify::Gate::Instance().SetSoundPlayer(nullptr);
+}
 
 QString WrapFromScheduled(const QString &text) {
 	return QString::fromUtf8("\xF0\x9F\x93\x85 ") + text;

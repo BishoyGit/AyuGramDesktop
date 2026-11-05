@@ -1,0 +1,48 @@
+name: Build Windows (AI notification filter)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows-x64:
+    name: Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Cache built libraries (Qt, FFmpeg, OpenSSL, ...)
+        uses: actions/cache@v4
+        with:
+          path: Libraries
+          key: ayugram-libs-${{ runner.os }}-${{ hashFiles('Telegram/build/prepare/prepare.py', 'Telegram/build/prepare/win.bat', 'Telegram/build/qt_version.py') }}
+
+      - name: Prepare and build libraries
+        shell: cmd
+        run: Telegram\build\prepare\win.bat
+
+      - name: Configure (cmake, VS generator)
+        working-directory: Telegram
+        shell: cmd
+        run: configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+
+      - name: Build AyuGram.exe
+        working-directory: Telegram
+        shell: cmd
+        run: cmake --build out --config Release --parallel %NUMBER_OF_PROCESSORS%
+
+      - name: Upload AyuGram.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-Windows-x64
+          path: Telegram/out/Release/AyuGram.exe
+          if-no-files-found: error

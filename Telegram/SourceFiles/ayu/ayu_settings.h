@@ -237,6 +237,101 @@ private:
 void to_json(nlohmann::json &j, const MessageShotSettings &s);
 void from_json(const nlohmann::json &j, MessageShotSettings &s);
 
+class AiNotifySettings {
+public:
+	[[nodiscard]] bool enabled() const { return _enabled.current(); }
+	void setEnabled(bool val);
+	[[nodiscard]] bool onlyWhenUnfocused() const { return _onlyWhenUnfocused.current(); }
+	void setOnlyWhenUnfocused(bool val);
+
+	[[nodiscard]] const QString &endpoint() const { return _endpoint.current(); }
+	void setEndpoint(const QString &val);
+	[[nodiscard]] const QString &apiKey() const { return _apiKey.current(); }
+	void setApiKey(const QString &val);
+	[[nodiscard]] const QString &model() const { return _model.current(); }
+	void setModel(const QString &val);
+	[[nodiscard]] const QString &systemPrompt() const { return _systemPrompt.current(); }
+	void setSystemPrompt(const QString &val);
+
+	[[nodiscard]] int timeoutMs() const { return _timeoutMs.current(); }
+	void setTimeoutMs(int val);
+	[[nodiscard]] int batchWindowMs() const { return _batchWindowMs.current(); }
+	void setBatchWindowMs(int val);
+	// 0 = show on failure, 1 = hide on failure
+	[[nodiscard]] int fallbackAction() const { return _fallbackAction.current(); }
+	void setFallbackAction(int val);
+	[[nodiscard]] int maxPerHour() const { return _maxPerHour.current(); }
+	void setMaxPerHour(int val);
+
+	[[nodiscard]] bool quietHoursEnabled() const { return _quietHoursEnabled.current(); }
+	void setQuietHoursEnabled(bool val);
+	[[nodiscard]] int quietFromMinutes() const { return _quietFromMinutes.current(); }
+	void setQuietFromMinutes(int val);
+	[[nodiscard]] int quietToMinutes() const { return _quietToMinutes.current(); }
+	void setQuietToMinutes(int val);
+
+	[[nodiscard]] bool sendText() const { return _sendText.current(); }
+	void setSendText(bool val);
+	[[nodiscard]] int textCap() const { return _textCap.current(); }
+	void setTextCap(int val);
+	[[nodiscard]] bool sendImages() const { return _sendImages.current(); }
+	void setSendImages(bool val);
+	[[nodiscard]] int maxImages() const { return _maxImages.current(); }
+	void setMaxImages(int val);
+	[[nodiscard]] int imageMaxSide() const { return _imageMaxSide.current(); }
+	void setImageMaxSide(int val);
+	[[nodiscard]] bool fetchSmallImages() const { return _fetchSmallImages.current(); }
+	void setFetchSmallImages(bool val);
+	[[nodiscard]] bool anonymizeNames() const { return _anonymizeNames.current(); }
+	void setAnonymizeNames(bool val);
+
+	[[nodiscard]] const QString &keywordRules() const { return _keywordRules.current(); }
+	void setKeywordRules(const QString &val);
+
+	void addVipId(int64 id);
+	void removeVipId(int64 id);
+	[[nodiscard]] bool isVipId(int64 id) const { return _vipIds.contains(id); }
+	[[nodiscard]] const std::unordered_set<int64> &vipIds() const { return _vipIds; }
+	void addBlockedId(int64 id);
+	void removeBlockedId(int64 id);
+	[[nodiscard]] bool isBlockedId(int64 id) const { return _blockedIds.contains(id); }
+	[[nodiscard]] const std::unordered_set<int64> &blockedIds() const { return _blockedIds; }
+
+	friend void to_json(nlohmann::json &j, const AiNotifySettings &s);
+	friend void from_json(const nlohmann::json &j, AiNotifySettings &s);
+
+private:
+	friend class AyuSettings;
+
+	rpl::variable<bool> _enabled = false;
+	rpl::variable<bool> _onlyWhenUnfocused = false;
+	rpl::variable<QString> _endpoint = QString(u"https://api.openai.com/v1/chat/completions");
+	rpl::variable<QString> _apiKey = QString();
+	rpl::variable<QString> _model = QString(u"gpt-4o-mini");
+	rpl::variable<QString> _systemPrompt = QString();
+	rpl::variable<int> _timeoutMs = 4000;
+	rpl::variable<int> _batchWindowMs = 1500;
+	rpl::variable<int> _fallbackAction = 0;
+	rpl::variable<int> _maxPerHour = 60;
+	rpl::variable<bool> _quietHoursEnabled = false;
+	rpl::variable<int> _quietFromMinutes = 23 * 60;
+	rpl::variable<int> _quietToMinutes = 8 * 60;
+	rpl::variable<bool> _sendText = true;
+	rpl::variable<int> _textCap = 4000;
+	rpl::variable<bool> _sendImages = true;
+	rpl::variable<int> _maxImages = 4;
+	rpl::variable<int> _imageMaxSide = 768;
+	rpl::variable<bool> _fetchSmallImages = true;
+	rpl::variable<bool> _anonymizeNames = false;
+	rpl::variable<QString> _keywordRules = QString();
+
+	std::unordered_set<int64> _vipIds;
+	std::unordered_set<int64> _blockedIds;
+};
+
+void to_json(nlohmann::json &j, const AiNotifySettings &s);
+void from_json(const nlohmann::json &j, AiNotifySettings &s);
+
 class AyuSettings {
 public:
 	AyuSettings(const AyuSettings &) = delete;
@@ -259,6 +354,9 @@ public:
 
 	[[nodiscard]] MessageShotSettings &messageShotSettings() { return _messageShotSettings; }
 	[[nodiscard]] const MessageShotSettings &messageShotSettings() const { return _messageShotSettings; }
+
+	[[nodiscard]] AiNotifySettings &aiNotifySettings() { return _aiNotifySettings; }
+	[[nodiscard]] const AiNotifySettings &aiNotifySettings() const { return _aiNotifySettings; }
 
 	void addShadowBan(int64 id);
 	void removeShadowBan(int64 id);
@@ -716,6 +814,8 @@ private:
 	std::map<uint64, std::unique_ptr<GhostModeAccountSettings>> _ghostAccounts;
 
 	MessageShotSettings _messageShotSettings;
+
+	AiNotifySettings _aiNotifySettings;
 };
 
 void to_json(nlohmann::json &j, const AyuSettings &s);

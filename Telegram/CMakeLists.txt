@@ -108,6 +108,12 @@ PRIVATE
 )
 
 set(ayugram_files
+        ayu/ai_notify/ai_notify_client.cpp
+        ayu/ai_notify/ai_notify_client.h
+        ayu/ai_notify/ai_notify_filter.cpp
+        ayu/ai_notify/ai_notify_filter.h
+        ayu/ai_notify/ai_notify_payload.cpp
+        ayu/ai_notify/ai_notify_payload.h
         ayu/ayu_worker.cpp
         ayu/ayu_worker.h
         ayu/ayu_url_handlers.cpp
@@ -163,6 +169,8 @@ set(ayugram_files
         ayu/ui/settings/settings_main.h
         ayu/ui/settings/settings_other.cpp
         ayu/ui/settings/settings_other.h
+        ayu/ui/settings/settings_ai_notify.cpp
+        ayu/ui/settings/settings_ai_notify.h
         ayu/ui/settings/filters/settings_filters_list.cpp
         ayu/ui/settings/filters/settings_filters_list.h
         ayu/ui/settings/filters/per_dialog_filter.cpp

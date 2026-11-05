@@ -22,6 +22,7 @@
 #include "window/window_controller.h"
 
 #include <fstream>
+#include <algorithm>
 #include <QApplication>
 
 using json = nlohmann::json;
@@ -352,6 +353,219 @@ void from_json(const nlohmann::json &j, MessageShotSettings &s) {
 	s._cloudThemeDocumentId = j.value("cloudThemeDocumentId", uint64(0));
 	s._cloudThemeTitle = j.value("cloudThemeTitle", QString());
 	s._cloudThemeAccountId = j.value("cloudThemeAccountId", uint64(0));
+}
+
+void AiNotifySettings::setEnabled(bool val) {
+	if (_enabled.current() == val) return;
+	_enabled = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setOnlyWhenUnfocused(bool val) {
+	if (_onlyWhenUnfocused.current() == val) return;
+	_onlyWhenUnfocused = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setEndpoint(const QString &val) {
+	if (_endpoint.current() == val) return;
+	_endpoint = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setApiKey(const QString &val) {
+	if (_apiKey.current() == val) return;
+	_apiKey = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setModel(const QString &val) {
+	if (_model.current() == val) return;
+	_model = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setSystemPrompt(const QString &val) {
+	if (_systemPrompt.current() == val) return;
+	_systemPrompt = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setTimeoutMs(int val) {
+	val = std::clamp(val, 500, 30000);
+	if (_timeoutMs.current() == val) return;
+	_timeoutMs = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setBatchWindowMs(int val) {
+	val = std::clamp(val, 0, 10000);
+	if (_batchWindowMs.current() == val) return;
+	_batchWindowMs = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setFallbackAction(int val) {
+	val = std::clamp(val, 0, 1);
+	if (_fallbackAction.current() == val) return;
+	_fallbackAction = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setMaxPerHour(int val) {
+	val = std::clamp(val, 1, 100000);
+	if (_maxPerHour.current() == val) return;
+	_maxPerHour = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setQuietHoursEnabled(bool val) {
+	if (_quietHoursEnabled.current() == val) return;
+	_quietHoursEnabled = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setQuietFromMinutes(int val) {
+	val = std::clamp(val, 0, 24 * 60 - 1);
+	if (_quietFromMinutes.current() == val) return;
+	_quietFromMinutes = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setQuietToMinutes(int val) {
+	val = std::clamp(val, 0, 24 * 60 - 1);
+	if (_quietToMinutes.current() == val) return;
+	_quietToMinutes = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setSendText(bool val) {
+	if (_sendText.current() == val) return;
+	_sendText = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setTextCap(int val) {
+	val = std::clamp(val, 0, 100000);
+	if (_textCap.current() == val) return;
+	_textCap = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setSendImages(bool val) {
+	if (_sendImages.current() == val) return;
+	_sendImages = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setMaxImages(int val) {
+	val = std::clamp(val, 1, 10);
+	if (_maxImages.current() == val) return;
+	_maxImages = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setImageMaxSide(int val) {
+	val = std::clamp(val, 64, 2048);
+	if (_imageMaxSide.current() == val) return;
+	_imageMaxSide = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setFetchSmallImages(bool val) {
+	if (_fetchSmallImages.current() == val) return;
+	_fetchSmallImages = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setAnonymizeNames(bool val) {
+	if (_anonymizeNames.current() == val) return;
+	_anonymizeNames = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::setKeywordRules(const QString &val) {
+	if (_keywordRules.current() == val) return;
+	_keywordRules = val;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::addVipId(int64 id) {
+	if (!_vipIds.insert(id).second) return;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::removeVipId(int64 id) {
+	if (!_vipIds.erase(id)) return;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::addBlockedId(int64 id) {
+	if (!_blockedIds.insert(id).second) return;
+	AyuSettings::save();
+}
+
+void AiNotifySettings::removeBlockedId(int64 id) {
+	if (!_blockedIds.erase(id)) return;
+	AyuSettings::save();
+}
+
+void to_json(nlohmann::json &j, const AiNotifySettings &s) {
+	j = nlohmann::json{
+		{"enabled", s._enabled.current()},
+		{"onlyWhenUnfocused", s._onlyWhenUnfocused.current()},
+		{"endpoint", s._endpoint.current().toStdString()},
+		{"apiKey", s._apiKey.current().toStdString()},
+		{"model", s._model.current().toStdString()},
+		{"systemPrompt", s._systemPrompt.current().toStdString()},
+		{"timeoutMs", s._timeoutMs.current()},
+		{"batchWindowMs", s._batchWindowMs.current()},
+		{"fallbackAction", s._fallbackAction.current()},
+		{"maxPerHour", s._maxPerHour.current()},
+		{"quietHoursEnabled", s._quietHoursEnabled.current()},
+		{"quietFromMinutes", s._quietFromMinutes.current()},
+		{"quietToMinutes", s._quietToMinutes.current()},
+		{"sendText", s._sendText.current()},
+		{"textCap", s._textCap.current()},
+		{"sendImages", s._sendImages.current()},
+		{"maxImages", s._maxImages.current()},
+		{"imageMaxSide", s._imageMaxSide.current()},
+		{"fetchSmallImages", s._fetchSmallImages.current()},
+		{"anonymizeNames", s._anonymizeNames.current()},
+		{"keywordRules", s._keywordRules.current().toStdString()},
+		{"vipIds", s._vipIds},
+		{"blockedIds", s._blockedIds},
+	};
+}
+
+void from_json(const nlohmann::json &j, AiNotifySettings &s) {
+	s._enabled = j.value("enabled", false);
+	s._onlyWhenUnfocused = j.value("onlyWhenUnfocused", false);
+	s._endpoint = QString::fromStdString(j.value("endpoint", "https://api.openai.com/v1/chat/completions"));
+	s._apiKey = QString::fromStdString(j.value("apiKey", ""));
+	s._model = QString::fromStdString(j.value("model", "gpt-4o-mini"));
+	s._systemPrompt = QString::fromStdString(j.value("systemPrompt", ""));
+	s._timeoutMs = j.value("timeoutMs", 4000);
+	s._batchWindowMs = j.value("batchWindowMs", 1500);
+	s._fallbackAction = j.value("fallbackAction", 0);
+	s._maxPerHour = j.value("maxPerHour", 60);
+	s._quietHoursEnabled = j.value("quietHoursEnabled", false);
+	s._quietFromMinutes = j.value("quietFromMinutes", 23 * 60);
+	s._quietToMinutes = j.value("quietToMinutes", 8 * 60);
+	s._sendText = j.value("sendText", true);
+	s._textCap = j.value("textCap", 4000);
+	s._sendImages = j.value("sendImages", true);
+	s._maxImages = j.value("maxImages", 4);
+	s._imageMaxSide = j.value("imageMaxSide", 768);
+	s._fetchSmallImages = j.value("fetchSmallImages", true);
+	s._anonymizeNames = j.value("anonymizeNames", false);
+	s._keywordRules = QString::fromStdString(j.value("keywordRules", ""));
+	if (j.contains("vipIds")) {
+		j.at("vipIds").get_to(s._vipIds);
+	}
+	if (j.contains("blockedIds")) {
+		j.at("blockedIds").get_to(s._blockedIds);
+	}
 }
 
 AyuSettings::AyuSettings()
@@ -1165,7 +1379,8 @@ void to_json(nlohmann::json &j, const AyuSettings &s) {
 		{"avatarCorners", s._avatarCorners.current()},
 		{"singleCornerRadius", s._singleCornerRadius.current()},
 		{"streamerMode", s._streamerMode.current()},
-		{"messageShotSettings", s._messageShotSettings}
+		{"messageShotSettings", s._messageShotSettings},
+		{"aiNotifySettings", s._aiNotifySettings}
 	};
 }
 
@@ -1272,5 +1487,8 @@ void from_json(const nlohmann::json &j, AyuSettings &s) {
 
 	if (j.contains("messageShotSettings") && j["messageShotSettings"].is_object()) {
 		j["messageShotSettings"].get_to(s._messageShotSettings);
+	}
+	if (j.contains("aiNotifySettings") && j["aiNotifySettings"].is_object()) {
+		j["aiNotifySettings"].get_to(s._aiNotifySettings);
 	}
 }
