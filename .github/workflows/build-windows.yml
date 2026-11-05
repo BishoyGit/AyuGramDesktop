@@ -15,7 +15,7 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Install VS ATL & MFC components
+      - name: Install VS ATL & MFC for the v143 14.44 toolset
         shell: powershell
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -24,11 +24,36 @@ jobs:
           $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
           $proc = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
             'modify', '--installPath', "`"$vsPath`"",
-            '--add', 'Microsoft.VisualStudio.Component.VC.ATL',
-            '--add', 'Microsoft.VisualStudio.Component.VC.MFC',
+            '--add', 'Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL',
+            '--add', 'Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC',
             '--quiet', '--norestart')
           Write-Host "Installer exit code: $($proc.ExitCode)"
           if ($proc.ExitCode -notin 0, 3010) { exit $proc.ExitCode }
+
+      - name: Verify ATL headers for the build toolset (self-heal)
+        shell: powershell
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = (& $vswhere -latest -products * -property installationPath | Select-Object -First 1).Trim()
+          $msvcRoot = Join-Path $vsPath "VC\Tools\MSVC"
+          $toolsets = @(Get-ChildItem $msvcRoot -Directory | Where-Object { Test-Path (Join-Path $_.FullName "bin\HostX64\x64\cl.exe") })
+          $withAtl = @($toolsets | Where-Object { Test-Path (Join-Path $_.FullName "atlmfc\include\atlbase.h") })
+          Write-Host "Toolsets: $($toolsets.Name -join ', ')"
+          Write-Host "With ATL: $($withAtl.Name -join ', ')"
+          if ($withAtl.Count -eq 0) {
+            Write-Host "##[error]ATL was not installed for any toolset"
+            exit 1
+          }
+          foreach ($t in $toolsets) {
+            if (-not (Test-Path (Join-Path $t.FullName "atlmfc\include\atlbase.h"))) {
+              $src = Join-Path $withAtl[0].FullName "atlmfc"
+              $dst = Join-Path $t.FullName "atlmfc"
+              Write-Host "Copying atlmfc from $src to $dst"
+              robocopy $src $dst /E /NFL /NDL /NJH /NJS | Out-Null
+              if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE }
+            }
+          }
+          Write-Host "ATL available for all toolsets."
 
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
