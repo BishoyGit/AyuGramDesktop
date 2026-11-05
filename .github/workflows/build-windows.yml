@@ -15,6 +15,21 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Install VS ATL & MFC components
+        shell: powershell
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = (& $vswhere -latest -products * -property installationPath | Select-Object -First 1).Trim()
+          Write-Host "Visual Studio at: $vsPath"
+          $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $proc = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
+            'modify', '--installPath', "`"$vsPath`"",
+            '--add', 'Microsoft.VisualStudio.Component.VC.ATL',
+            '--add', 'Microsoft.VisualStudio.Component.VC.MFC',
+            '--quiet', '--norestart')
+          Write-Host "Installer exit code: $($proc.ExitCode)"
+          if ($proc.ExitCode -notin 0, 3010) { exit $proc.ExitCode }
+
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
