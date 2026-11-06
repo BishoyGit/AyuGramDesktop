@@ -89,7 +89,7 @@ jobs:
         shell: cmd
         env:
           CL_MPCount: 1
-        run: cmake --build out --config Release --parallel 1 -- /p:MultiProcessorCompilation=false
+        run: cmake --build out --config Release --parallel 1 -- /m:1 /p:MultiProcessorCompilation=false
 
       - name: Upload AyuGram.exe
         uses: actions/upload-artifact@v4
