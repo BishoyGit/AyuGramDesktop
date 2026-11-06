@@ -305,9 +305,9 @@ private:
 
 	rpl::variable<bool> _enabled = false;
 	rpl::variable<bool> _onlyWhenUnfocused = false;
-	rpl::variable<QString> _endpoint = QString(u"https://api.openai.com/v1/chat/completions");
+	rpl::variable<QString> _endpoint = QString::fromUtf8("https://api.openai.com/v1/chat/completions");
 	rpl::variable<QString> _apiKey = QString();
-	rpl::variable<QString> _model = QString(u"gpt-4o-mini");
+	rpl::variable<QString> _model = QString::fromUtf8("gpt-4o-mini");
 	rpl::variable<QString> _systemPrompt = QString();
 	rpl::variable<int> _timeoutMs = 4000;
 	rpl::variable<int> _batchWindowMs = 1500;

@@ -578,7 +578,7 @@ void BuildDiagnostics(SectionBuilder &builder) {
 const auto kMeta = BuildHelper({
 	.id = AyuAiNotify::Id(),
 	.parentId = AyuMain::Id(),
-	.title = QString(u"AI Notification Filter"),
+	.title = QString::fromUtf8("AI Notification Filter"),
 	.icon = &st::menuIconNotifications,
 }, [](SectionBuilder &builder) {
 	builder.addSkip();
@@ -594,7 +594,7 @@ const auto kMeta = BuildHelper({
 } // namespace
 
 rpl::producer<QString> AyuAiNotify::title() {
-	return rpl::single(QString(u"AI Notification Filter"));
+	return rpl::single(QString::fromUtf8("AI Notification Filter"));
 }
 
 AyuAiNotify::AyuAiNotify(
