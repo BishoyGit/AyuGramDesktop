@@ -64,8 +64,9 @@ jobs:
 
       - name: Restore built libraries cache (Qt, FFmpeg, OpenSSL, ...)
         uses: actions/cache/restore@v4
+        id: libraries-cache
         with:
-          path: Libraries
+          path: ${{ github.workspace }}/../Libraries
           key: ayugram-libs-${{ runner.os }}-msvc-14.44-${{ hashFiles('Telegram/build/prepare/prepare.py', 'Telegram/build/prepare/win.bat', 'Telegram/build/qt_version.py') }}
 
       - name: Prepare and build libraries
@@ -73,10 +74,11 @@ jobs:
         run: Telegram\build\prepare\win.bat
 
       - name: Save built libraries cache
+        if: steps.libraries-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: Libraries
-          key: ayugram-libs-${{ runner.os }}-msvc-14.44-${{ hashFiles('Telegram/build/prepare/prepare.py', 'Telegram/build/prepare/win.bat', 'Telegram/build/qt_version.py') }}
+          path: ${{ github.workspace }}/../Libraries
+          key: ${{ steps.libraries-cache.outputs.cache-primary-key }}
 
       - name: Configure (cmake, VS generator)
         working-directory: Telegram
