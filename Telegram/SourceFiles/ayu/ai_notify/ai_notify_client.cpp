@@ -7,7 +7,7 @@
 #include "ayu/ai_notify/ai_notify_client.h"
 
 #include <algorithm>
-#include <gsl/gsl_util>
+#include <gsl/util>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>

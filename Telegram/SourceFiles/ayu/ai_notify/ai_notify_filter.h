@@ -36,10 +36,7 @@ namespace Main {
 class Session;
 } // namespace Main
 
-namespace Window::Notifications {
-class Manager;
-struct NotificationFields;
-} // namespace Window::Notifications
+#include "window/notifications_manager.h"
 
 namespace Ayu::AiNotify {
 

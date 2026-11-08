@@ -22,7 +22,7 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QTime>
 #include <QtCore/QTimer>
-#include <gsl/gsl_util>
+#include <gsl/util>
 #include <map>
 
 namespace Ayu::AiNotify {
