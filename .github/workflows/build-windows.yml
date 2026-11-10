@@ -80,17 +80,18 @@ jobs:
           path: ${{ runner.workspace }}/Libraries
           key: ${{ steps.libraries-cache.outputs.cache-primary-key }}
 
-      - name: Disable MSVC multi-process compilation for the app
+      - name: Limit MSVC compilation to one process
         shell: powershell
         run: |
           $options = Join-Path $env:GITHUB_WORKSPACE 'cmake\options_win.cmake'
           $content = [System.IO.File]::ReadAllText($options)
           $pattern = '(?m)^([ \t]*)/MP[ \t]*# Enable multi process build\.'
-          $updated = [regex]::Replace($content, $pattern, '$1# /MP disabled to keep compiler memory bounded.', 1)
+          $updated = [regex]::Replace($content, $pattern, '$1/MP1 # Limit compiler parallelism to one process.', 1)
           if ($updated -eq $content) {
             throw 'Could not find the expected MSVC /MP option in cmake/options_win.cmake.'
           }
           [System.IO.File]::WriteAllText($options, $updated, (New-Object System.Text.UTF8Encoding($false)))
+          Write-Host 'Set the generated app compile option to /MP1.'
 
       - name: Configure (cmake, VS generator)
         working-directory: Telegram
@@ -101,7 +102,7 @@ jobs:
         shell: cmd
         env:
           CL_MPCount: 1
-        run: cmake --build out --config Release --parallel 1 -- /m:1 /p:MultiProcessorCompilation=false
+        run: cmake --build out --config Release --parallel 1 -- /m:1 /p:MultiProcessorCompilation=true
 
       - name: Upload AyuGram.exe
         uses: actions/upload-artifact@v4
