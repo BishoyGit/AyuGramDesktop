@@ -80,18 +80,18 @@ jobs:
           path: ${{ runner.workspace }}/Libraries
           key: ${{ steps.libraries-cache.outputs.cache-primary-key }}
 
-      - name: Limit MSVC compilation to one process
+      - name: Disable MSVC multi-process compilation for the app
         shell: powershell
         run: |
           $options = Join-Path $env:GITHUB_WORKSPACE 'cmake\options_win.cmake'
           $content = [System.IO.File]::ReadAllText($options)
           $pattern = '(?m)^([ \t]*)/MP[ \t]*# Enable multi process build\.'
-          $updated = [regex]::Replace($content, $pattern, '$1/MP1 # Limit compiler parallelism to one process.', 1)
+          $updated = [regex]::Replace($content, $pattern, '$1# /MP disabled to keep compiler memory bounded.', 1)
           if ($updated -eq $content) {
             throw 'Could not find the expected MSVC /MP option in cmake/options_win.cmake.'
           }
           [System.IO.File]::WriteAllText($options, $updated, (New-Object System.Text.UTF8Encoding($false)))
-          Write-Host 'Set the generated app compile option to /MP1.'
+          Write-Host 'Removed the generated app /MP option.'
 
       - name: Configure (cmake, VS generator)
         working-directory: Telegram
@@ -99,10 +99,31 @@ jobs:
         run: configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
       - name: Build AyuGram.exe
-        shell: cmd
+        shell: powershell
         env:
           CL_MPCount: 1
-        run: cmake --build out --config Release --parallel 1 -- /m:1 /p:MultiProcessorCompilation=true
+        run: |
+          $buildOutput = Join-Path $env:RUNNER_TEMP 'ayugram-build.log'
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "Build attempt $attempt of $maxAttempts"
+            & cmake --build out --config Release --parallel 1 -- /m:1 /p:MultiProcessorCompilation=false 2>&1 |
+              Tee-Object -FilePath $buildOutput
+            $buildExitCode = $LASTEXITCODE
+            if ($buildExitCode -eq 0) {
+              exit 0
+            }
+            $buildLog = Get-Content -Raw -LiteralPath $buildOutput
+            if ($buildLog -notmatch 'error C1060|error C1076|error C3859') {
+              Write-Host "##[error]Build failed with exit code $buildExitCode; not a recognized compiler memory failure."
+              exit $buildExitCode
+            }
+            if ($attempt -eq $maxAttempts) {
+              Write-Host "##[error]Compiler memory failure persisted after $maxAttempts attempts."
+              exit $buildExitCode
+            }
+            Write-Warning 'Compiler reported memory exhaustion; retrying incrementally so completed objects are reused.'
+          }
 
       - name: Upload AyuGram.exe
         uses: actions/upload-artifact@v4
