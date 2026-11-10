@@ -16,6 +16,7 @@
 #include "data/data_poll.h"
 #include "data/data_session.h"
 #include "data/data_web_page.h"
+#include "history/history.h"
 #include "history/history_item.h"
 #include "ui/image/image_location.h"
 
@@ -226,7 +227,7 @@ Payload BuildPayload(
 			// item the notification is attributed to.
 			auto covered = 0;
 			if (const auto group = history->owner().groups().find(item)) {
-				for (const auto groupItem : group->items) {
+				for (const auto &groupItem : group->items) {
 					if (int(result.imagesJpeg.size()) >= maxImages) {
 						break;
 					}

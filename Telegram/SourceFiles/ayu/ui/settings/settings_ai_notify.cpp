@@ -331,9 +331,9 @@ void BuildBehavior(SectionBuilder &builder) {
 		.options = {
 			u"10"_q, u"20"_q, u"40"_q, u"60"_q, u"120"_q, u"Unlimited"_q },
 		.setter = [=](int v) {
-			Ai().setMaxPerHour(
-				(std::initializer_list<int>{
-					10, 20, 40, 60, 120, 100000 })[v]);
+			static constexpr int values[] = {
+				10, 20, 40, 60, 120, 100000 };
+			Ai().setMaxPerHour(values[v]);
 		},
 		.icon = { &st::menuIconSettings },
 	});
@@ -389,8 +389,8 @@ void BuildBehavior(SectionBuilder &builder) {
 		.options = {
 			u"2 seconds"_q, u"4 seconds"_q, u"8 seconds"_q, u"15 seconds"_q },
 		.setter = [=](int v) {
-			Ai().setTimeoutMs(
-				(std::initializer_list<int>{ 2000, 4000, 8000, 15000 })[v]);
+			static constexpr int values[] = { 2000, 4000, 8000, 15000 };
+			Ai().setTimeoutMs(values[v]);
 		},
 		.icon = { &st::menuIconSettings },
 	});
@@ -532,8 +532,8 @@ void BuildPrivacy(SectionBuilder &builder) {
 			u"4 000 characters"_q,
 			u"Whole post"_q },
 		.setter = [=](int v) {
-			Ai().setTextCap(
-				(std::initializer_list<int>{ 200, 500, 1000, 4000, 100000 })[v]);
+			static constexpr int values[] = { 200, 500, 1000, 4000, 100000 };
+			Ai().setTextCap(values[v]);
 		},
 		.icon = { &st::menuIconSettings },
 	});

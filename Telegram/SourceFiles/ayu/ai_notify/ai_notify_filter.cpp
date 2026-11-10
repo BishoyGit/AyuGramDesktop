@@ -10,6 +10,7 @@
 #include "ayu/ai_notify/ai_notify_payload.h"
 #include "ayu/ayu_settings.h"
 #include "core/application.h"
+#include "data/data_forum_topic.h"
 #include "data/data_session.h"
 #include "data/data_thread.h"
 #include "history/history.h"
@@ -527,9 +528,9 @@ void Gate::flush() {
 				.arg(imageIndex)
 				.arg(payload.id));
 			imagesJson.push_back(QJsonObject{
-				{"type", "image_url"},
-				{"image_url", QJsonObject{
-					"url", u"data:image/jpeg;base64,"_q
+				{u"type"_q, u"image_url"_q},
+				{u"image_url"_q, QJsonObject{
+					{u"url"_q, u"data:image/jpeg;base64,"_q
 						+ QString::fromLatin1(image.toBase64()),
 				}},
 			});

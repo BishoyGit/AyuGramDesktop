@@ -114,7 +114,20 @@ jobs:
               exit 0
             }
             $buildLog = Get-Content -Raw -LiteralPath $buildOutput
-            if ($buildLog -notmatch 'error C1060|error C1076|error C3859') {
+            $errorCodes = @(
+              [regex]::Matches($buildLog, 'error C(\d+)') |
+                ForEach-Object { $_.Groups[1].Value } |
+                Sort-Object -Unique
+            )
+            $memoryErrorCodes = @('1060', '1076', '3859')
+            $unexpectedErrors = @(
+              $errorCodes | Where-Object { $_ -notin $memoryErrorCodes }
+            )
+            if ($unexpectedErrors.Count -gt 0) {
+              Write-Host "##[error]Build reported non-memory compiler errors: $($unexpectedErrors -join ', ')."
+              exit $buildExitCode
+            }
+            if ($errorCodes.Count -eq 0) {
               Write-Host "##[error]Build failed with exit code $buildExitCode; not a recognized compiler memory failure."
               exit $buildExitCode
             }
