@@ -10,7 +10,9 @@
 #include "ayu/ai_notify/ai_notify_payload.h"
 #include "ayu/ayu_settings.h"
 #include "core/application.h"
+#include "data/data_document.h"
 #include "data/data_forum_topic.h"
+#include "data/data_saved_sublist.h"
 #include "data/data_session.h"
 #include "data/data_thread.h"
 #include "history/history.h"
@@ -533,7 +535,7 @@ void Gate::flush() {
 					{u"url"_q, u"data:image/jpeg;base64,"_q
 						+ QString::fromLatin1(image.toBase64()),
 				}},
-			});
+			}});
 		}
 		itemsJson.push_back(object);
 	}

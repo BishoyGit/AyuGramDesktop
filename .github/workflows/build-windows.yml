@@ -96,14 +96,18 @@ jobs:
       - name: Configure (cmake, VS generator)
         working-directory: Telegram
         shell: cmd
-        run: configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 "-DCMAKE_CXX_FLAGS_RELEASE=/O1 /Ob1 /DNDEBUG" "-DCMAKE_C_FLAGS_RELEASE=/O1 /Ob1 /DNDEBUG"
+        run: configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 "-DCMAKE_CXX_FLAGS_RELEASE=/Od /Ob0 /DNDEBUG" "-DCMAKE_C_FLAGS_RELEASE=/Od /DNDEBUG"
 
       - name: Verify memory-conscious Release flags
         shell: powershell
         run: |
           $cache = Join-Path $env:GITHUB_WORKSPACE 'out\CMakeCache.txt'
           foreach ($language in @('C', 'CXX')) {
-            $expected = "CMAKE_${language}_FLAGS_RELEASE:STRING=/O1 /Ob1 /DNDEBUG"
+            $expected = if ($language -eq 'CXX') {
+              'CMAKE_CXX_FLAGS_RELEASE:STRING=/Od /Ob0 /DNDEBUG'
+            } else {
+              'CMAKE_C_FLAGS_RELEASE:STRING=/Od /DNDEBUG'
+            }
             if (-not (Select-String -Path $cache -SimpleMatch $expected -Quiet)) {
               throw "Expected Release flags not found in CMake cache: $expected"
             }

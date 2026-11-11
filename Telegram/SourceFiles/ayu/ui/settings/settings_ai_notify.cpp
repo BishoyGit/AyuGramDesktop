@@ -15,6 +15,7 @@
 #include "boxes/peer_list_box.h"
 #include "core/application.h"
 #include "data/data_chat_filters.h"
+#include "data/data_peer.h"
 #include "data/data_session.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
