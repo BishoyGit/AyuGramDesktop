@@ -9,6 +9,8 @@
 #include "data/data_channel.h"
 #include "data/data_chat.h"
 #include "data/data_document.h"
+#include "data/data_file_origin.h"
+#include "data/data_forum_topic.h"
 #include "data/data_groups.h"
 #include "data/data_peer.h"
 #include "data/data_photo.h"
