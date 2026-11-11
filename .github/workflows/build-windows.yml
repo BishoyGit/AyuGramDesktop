@@ -96,7 +96,19 @@ jobs:
       - name: Configure (cmake, VS generator)
         working-directory: Telegram
         shell: cmd
-        run: configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+        run: configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 "-DCMAKE_CXX_FLAGS_RELEASE=/O1 /Ob1 /DNDEBUG" "-DCMAKE_C_FLAGS_RELEASE=/O1 /Ob1 /DNDEBUG"
+
+      - name: Verify memory-conscious Release flags
+        shell: powershell
+        run: |
+          $cache = Join-Path $env:GITHUB_WORKSPACE 'out\CMakeCache.txt'
+          foreach ($language in @('C', 'CXX')) {
+            $expected = "CMAKE_${language}_FLAGS_RELEASE:STRING=/O1 /Ob1 /DNDEBUG"
+            if (-not (Select-String -Path $cache -SimpleMatch $expected -Quiet)) {
+              throw "Expected Release flags not found in CMake cache: $expected"
+            }
+            Write-Host $expected
+          }
 
       - name: Build AyuGram.exe
         shell: powershell
@@ -113,10 +125,9 @@ jobs:
             if ($buildExitCode -eq 0) {
               exit 0
             }
-            $buildLog = Get-Content -Raw -LiteralPath $buildOutput
             $errorCodes = @(
-              [regex]::Matches($buildLog, 'error C(\d+)') |
-                ForEach-Object { $_.Groups[1].Value } |
+              (Select-String -Path $buildOutput -Pattern 'error C(\d+)') |
+                ForEach-Object { $_.Matches[0].Groups[1].Value } |
                 Sort-Object -Unique
             )
             $memoryErrorCodes = @('1060', '1076', '3859')
@@ -127,7 +138,8 @@ jobs:
               Write-Host "##[error]Build reported non-memory compiler errors: $($unexpectedErrors -join ', ')."
               exit $buildExitCode
             }
-            if ($errorCodes.Count -eq 0) {
+            $hasOutOfMemory = Select-String -Path $buildOutput -Pattern 'out of memory|not enough memory' -Quiet
+            if ($errorCodes.Count -eq 0 -and -not $hasOutOfMemory) {
               Write-Host "##[error]Build failed with exit code $buildExitCode; not a recognized compiler memory failure."
               exit $buildExitCode
             }
