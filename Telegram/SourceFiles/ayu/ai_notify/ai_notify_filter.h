@@ -73,8 +73,8 @@ public:
 	// Called from System::schedule() for every candidate notification.
 	[[nodiscard]] PreDecision PreRegister(not_null<HistoryItem*> item);
 
-	// Called from NativeManager::doShowNotification(). Returns true when
-	// the gate took over (suppress or hold for the LLM) — the caller must
+	// Called from Manager::showNotification(). Returns true when the gate
+	// took over (suppress or hold for the LLM) — the caller must
 	// not show the toast. Returns false to show it immediately.
 	bool GateToast(
 		const Window::Notifications::Manager::NotificationFields &fields);
