@@ -1579,6 +1579,13 @@ void Manager::notificationActionActivated(
 	}).send();
 }
 
+void Manager::showNotification(NotificationFields fields) {
+	if (Ayu::AiNotify::Gate::Instance().GateToast(fields)) {
+		return;
+	}
+	doShowNotification(std::move(fields));
+}
+
 void Manager::maybePlaySound(Fn<void()> playSound) {
 	if (_system->volumeSupported()) {
 		doMaybePlaySound(std::move(playSound));
@@ -1586,11 +1593,6 @@ void Manager::maybePlaySound(Fn<void()> playSound) {
 }
 
 void NativeManager::doShowNotification(NotificationFields &&fields) {
-	// AI notification filter: returns true when the gate suppressed the
-	// toast or holds it for an LLM verdict (it will re-show it on pass).
-	if (Ayu::AiNotify::Gate::Instance().GateToast(fields)) {
-		return;
-	}
 	const auto pollVote = !fields.pollVoteOption.isEmpty();
 	const auto type = fields.reactionFrom
 		? (pollVote
