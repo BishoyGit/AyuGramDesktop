@@ -2,9 +2,6 @@ name: Build Windows (AI notification filter)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - dev
 
 jobs:
   windows-x64:
