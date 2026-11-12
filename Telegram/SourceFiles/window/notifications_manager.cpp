@@ -483,7 +483,7 @@ void System::schedule(Data::ItemNotification notification) {
 	const auto notifyBy = (type == Data::ItemNotificationType::Message)
 		? item->specialNotificationPeer()
 		: notification.reactionOrVoteSender;
-	if (!skip.silent) {
+	if (!skip.silent && aiDecision != Ayu::AiNotify::PreDecision::Block) {
 		const auto toastsPossible = Core::App().settings().desktopNotify()
 			&& !_manager->skipToast();
 		const auto gateWantsToJudge

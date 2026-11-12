@@ -491,7 +491,9 @@ void AiNotifySettings::setKeywordRules(const QString &val) {
 }
 
 void AiNotifySettings::addVipId(int64 id) {
-	if (!_vipIds.insert(id).second) return;
+	const auto inserted = _vipIds.insert(id).second;
+	const auto removed = _blockedIds.erase(id) != 0;
+	if (!inserted && !removed) return;
 	AyuSettings::save();
 }
 
@@ -501,7 +503,9 @@ void AiNotifySettings::removeVipId(int64 id) {
 }
 
 void AiNotifySettings::addBlockedId(int64 id) {
-	if (!_blockedIds.insert(id).second) return;
+	const auto inserted = _blockedIds.insert(id).second;
+	const auto removed = _vipIds.erase(id) != 0;
+	if (!inserted && !removed) return;
 	AyuSettings::save();
 }
 
@@ -565,6 +569,9 @@ void from_json(const nlohmann::json &j, AiNotifySettings &s) {
 	}
 	if (j.contains("blockedIds")) {
 		j.at("blockedIds").get_to(s._blockedIds);
+	}
+	for (const auto id : s._vipIds) {
+		s._blockedIds.erase(id);
 	}
 }
 

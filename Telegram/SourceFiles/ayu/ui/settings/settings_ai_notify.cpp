@@ -17,6 +17,7 @@
 #include "data/data_chat_filters.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
+#include "history/history.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "settings/settings_builder.h"
@@ -35,6 +36,7 @@
 #include "window/window_session_controller.h"
 
 #include <algorithm>
+#include <unordered_set>
 #include <QtCore/QDateTime>
 #include <QtCore/QTime>
 
@@ -129,11 +131,16 @@ void PickChats(
 		const QString &title,
 		bool vip) {
 	const auto session = &controller->session();
-	const auto &ids = vip ? Ai().vipIds() : Ai().blockedIds();
+	const auto ids = vip ? Ai().vipIds() : Ai().blockedIds();
+	auto editableIds = std::unordered_set<int64>();
 	auto initial = base::flat_set<not_null<History*>>();
 	for (const auto id : ids) {
 		if (const auto peer = session->data().peerLoaded(PeerId(id))) {
-			initial.insert(session->data().history(peer));
+			const auto history = session->data().history(peer);
+			if (history->inChatList()) {
+				initial.insert(history);
+				editableIds.insert(id);
+			}
 		}
 	}
 	const auto options = Data::ChatFilter::Flag::Contacts
@@ -155,7 +162,7 @@ void PickChats(
 	auto initBox = [=](not_null<PeerListBox*> box) {
 		box->addButton(tr::lng_settings_save(), crl::guard(box, [=] {
 			const auto peers = box->collectSelectedRows();
-			for (const auto id : ids) {
+			for (const auto id : editableIds) {
 				if (vip) {
 					Ai().removeVipId(id);
 				} else {
@@ -234,7 +241,12 @@ void BuildGeneral(SectionBuilder &builder) {
 		.id = u"ayu/aiNotify/enable"_q,
 		.title = rpl::single(u"Enable AI notification filter"_q),
 		.getter = [=] { return Ai().enabled(); },
-		.setter = [=](bool v) { Ai().setEnabled(v); },
+		.setter = [=](bool v) {
+			Ai().setEnabled(v);
+			if (!v) {
+				Ayu::AiNotify::Gate::Instance().Disable();
+			}
+		},
 		.icon = { &st::menuIconNotifications },
 	});
 	ayu.addToggle({
@@ -245,9 +257,12 @@ void BuildGeneral(SectionBuilder &builder) {
 		.icon = { &st::menuIconSoundOn },
 	});
 	builder.addDividerText(rpl::single(
-		u"Every desktop notification is judged before it is shown. "
-		"VIP chats always pass, blocked chats never show, and the rest "
-		"goes to the AI when local rules can't decide."_q));
+		u"The AI filter is off by default. When enabled, VIP chats always "
+		"notify and blocked chats never notify. Other notifications go to "
+		"the AI unless a local rule decides first (and only while the app is "
+		"unfocused if that option is on). In the chat picker, checked type "
+		"icons only filter which chats are listed — select individual chat "
+		"rows below."_q));
 }
 
 void BuildProvider(SectionBuilder &builder) {
@@ -447,7 +462,10 @@ void BuildLists(SectionBuilder &builder) {
 		.title = rpl::single(u"VIP chats (always notify)..."_q),
 		.icon = { &st::menuIconFave },
 		.onClick = [=] {
-			PickChats(controller, u"Always notify"_q, true);
+			PickChats(
+				controller,
+				u"Always notify — select chats below"_q,
+				true);
 		},
 	});
 	builder.addButton({
@@ -455,7 +473,10 @@ void BuildLists(SectionBuilder &builder) {
 		.title = rpl::single(u"Blocked chats (never notify)..."_q),
 		.icon = { &st::menuIconReport },
 		.onClick = [=] {
-			PickChats(controller, u"Never notify"_q, false);
+			PickChats(
+				controller,
+				u"Never notify — select chats below"_q,
+				false);
 		},
 	});
 	builder.addButton({

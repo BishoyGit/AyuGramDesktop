@@ -124,12 +124,19 @@ constexpr auto kLogLimit = 100;
 	}
 
 	const auto parseObject = [&](const QJsonObject &obj) {
-		if (obj.contains(u"show"_q)) {
-			result[obj.value(u"id"_q).toInt()] = {
-				obj.value(u"show"_q).toBool(),
-				obj.value(u"reason"_q).toString(),
-			};
+		const auto id = obj.value(u"id"_q);
+		const auto show = obj.value(u"show"_q);
+		if (!id.isDouble() || !show.isBool()) {
+			return;
 		}
+		const auto numericId = id.toInt(-1);
+		if (numericId <= 0) {
+			return;
+		}
+		result[numericId] = {
+			show.toBool(),
+			obj.value(u"reason"_q).toString(),
+		};
 	};
 
 	if (text.startsWith('[')) {
@@ -329,13 +336,15 @@ PreDecision Gate::PreRegister(not_null<HistoryItem*> item) {
 	} else if (
 		ai.onlyWhenUnfocused()
 		&& Core::App().activeWindow() != nullptr) {
-		return PreDecision::Block;
-	} else if (matchKeywords(item) == PreDecision::Block) {
-		return PreDecision::Block;
-	} else if (overRateLimit()) {
-		return PreDecision::Block;
+		return PreDecision::Allow;
 	}
-	return PreDecision::Ask;
+	const auto keywords = matchKeywords(item);
+	if (keywords != PreDecision::Ask) {
+		return keywords;
+	}
+	return overRateLimit()
+		? PreDecision::Block
+		: PreDecision::Ask;
 }
 
 void Gate::trackSession(not_null<Main::Session*> session) {
@@ -384,9 +393,9 @@ bool Gate::GateToast(
 	} else if (
 		ai.onlyWhenUnfocused()
 		&& Core::App().activeWindow() != nullptr) {
-		return block(u"window is focused"_q);
-	} else if (overRateLimit()) {
-		return block(u"rate limit"_q);
+		++_counters.shown;
+		log(chat, u"shown"_q, u"window focused, filter bypassed"_q);
+		return false;
 	}
 
 	const auto keywords = matchKeywords(item);
@@ -396,6 +405,8 @@ bool Gate::GateToast(
 		return false;
 	} else if (keywords == PreDecision::Block) {
 		return block(u"keyword rule"_q);
+	} else if (overRateLimit()) {
+		return block(u"rate limit"_q);
 	}
 
 	// LLM path — hold the notification and decide asynchronously.
@@ -575,6 +586,13 @@ void Gate::flush() {
 	};
 
 	const auto started = crl::now();
+	const auto requestId = ++_nextRequestId;
+	auto held = std::vector<Pending>();
+	held.reserve(validated->size());
+	for (const auto &entry : *validated) {
+		held.push_back(entry.pending);
+	}
+	_inFlightPending.emplace(requestId, std::move(held));
 	_client->Send(
 		{
 			.endpoint = ai.endpoint(),
@@ -582,8 +600,9 @@ void Gate::flush() {
 			.body = QJsonDocument(body).toJson(QJsonDocument::Compact),
 			.timeoutMs = ai.timeoutMs(),
 		},
-		[this, validated, started, generation = _generation](
+		[this, validated, started, requestId, generation = _generation](
 				const QByteArray &raw) {
+			_inFlightPending.remove(requestId);
 			if (generation != _generation) {
 				return;
 			}
@@ -609,7 +628,9 @@ void Gate::flush() {
 				}
 			}
 		},
-		[this, validated, started, generation = _generation](QString error) {
+		[this, validated, started, requestId, generation = _generation](
+				QString error) {
+			_inFlightPending.remove(requestId);
 			if (generation != _generation) {
 				return;
 			}
@@ -784,7 +805,29 @@ void Gate::CancelItem(not_null<HistoryItem*> item) {
 void Gate::CancelAll() {
 	++_generation;
 	_pending.clear();
+	_inFlightPending.clear();
 	_client->CancelAll();
+}
+
+void Gate::Disable() {
+	_flushTimer->stop();
+	auto held = std::move(_pending);
+	_pending.clear();
+	for (auto &entry : _inFlightPending) {
+		for (auto &pending : entry.second) {
+			held.push_back(std::move(pending));
+		}
+	}
+	_inFlightPending.clear();
+	++_generation;
+	_client->CancelAll();
+	for (const auto &pending : held) {
+		resolve(
+			pending,
+			true,
+			u"filter disabled while notification was held"_q,
+			false);
+	}
 }
 
 void Gate::log(

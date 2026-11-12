@@ -87,6 +87,7 @@ public:
 	void CancelSession(not_null<Main::Session*> session);
 	void CancelItem(not_null<HistoryItem*> item);
 	void CancelAll();
+	void Disable();
 
 	// --- deferred sound: System registers how to play an alert, the gate
 	// fires it only when a held notification is allowed through ---
@@ -176,11 +177,12 @@ private:
 
 	std::unique_ptr<class AiClient> _client;
 	std::vector<Pending> _pending;
+	base::flat_map<int, std::vector<Pending>> _inFlightPending;
 	QTimer *_flushTimer = nullptr;
 
-	// generation guard: verdicts from requests dispatched before the last
-	// CancelAll() are ignored
+	// generation guard: verdicts from invalidated requests are ignored
 	int _generation = 0;
+	int _nextRequestId = 0;
 
 	std::deque<crl::time> _shownTimes;
 	base::flat_map<ThreadKey, crl::time> _lastSoundAt;
