@@ -96,7 +96,7 @@ jobs:
       - name: Configure (cmake, VS generator)
         working-directory: Telegram
         shell: cmd
-        run: configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 "-DCMAKE_CXX_FLAGS_RELEASE=/Od /Ob0 /DNDEBUG" "-DCMAKE_C_FLAGS_RELEASE=/Od /DNDEBUG"
+        run: configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 "-DCMAKE_CXX_FLAGS_RELEASE=/Od /Ob0 /DNDEBUG" "-DCMAKE_C_FLAGS_RELEASE=/Od /DNDEBUG" "-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT:STRING="
 
       - name: Verify memory-conscious Release flags
         shell: powershell
@@ -113,6 +113,10 @@ jobs:
             }
             Write-Host $expected
           }
+          if (-not (Select-String -Path $cache -Pattern '^CMAKE_MSVC_DEBUG_INFORMATION_FORMAT:STRING=$' -Quiet)) {
+            throw 'Release debug information must be disabled to keep the linker memory bounded.'
+          }
+          Write-Host 'CMAKE_MSVC_DEBUG_INFORMATION_FORMAT:STRING='
 
       - name: Build AyuGram.exe
         shell: powershell
