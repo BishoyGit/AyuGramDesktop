@@ -278,10 +278,6 @@ public:
 	void setSendImages(bool val);
 	[[nodiscard]] int maxImages() const { return _maxImages.current(); }
 	void setMaxImages(int val);
-	[[nodiscard]] int imageMaxSide() const { return _imageMaxSide.current(); }
-	void setImageMaxSide(int val);
-	[[nodiscard]] bool fetchSmallImages() const { return _fetchSmallImages.current(); }
-	void setFetchSmallImages(bool val);
 	[[nodiscard]] bool anonymizeNames() const { return _anonymizeNames.current(); }
 	void setAnonymizeNames(bool val);
 
@@ -320,8 +316,6 @@ private:
 	rpl::variable<int> _textCap = 4000;
 	rpl::variable<bool> _sendImages = true;
 	rpl::variable<int> _maxImages = 4;
-	rpl::variable<int> _imageMaxSide = 768;
-	rpl::variable<bool> _fetchSmallImages = true;
 	rpl::variable<bool> _anonymizeNames = false;
 	rpl::variable<QString> _keywordRules = QString();
 

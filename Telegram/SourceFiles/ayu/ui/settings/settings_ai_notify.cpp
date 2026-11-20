@@ -277,6 +277,10 @@ void BuildProvider(SectionBuilder &builder) {
 			EditProviderBox(controller);
 		},
 	});
+	builder.addDividerText(rpl::single(
+		u"Use an endpoint ending in /v1/systemone for a decision model such "
+		u"as Ollama d1. This uses the built-in category filter; other endpoints "
+		u"keep using chat completions and the system prompt."_q));
 	builder.addButton({
 		.id = u"ayu/aiNotify/prompt"_q,
 		.title = rpl::single(u"System prompt..."_q),
@@ -515,14 +519,6 @@ void BuildPrivacy(SectionBuilder &builder) {
 		.title = rpl::single(u"Send images (photos of the post)"_q),
 		.getter = [=] { return Ai().sendImages(); },
 		.setter = [=](bool v) { Ai().setSendImages(v); },
-		.icon = { &st::menuIconSettings },
-	});
-	ayu.addToggle({
-		.id = u"ayu/aiNotify/fetchSmallImages"_q,
-		.title = rpl::single(
-			u"Download small image preview if not cached (~50 KB)"_q),
-		.getter = [=] { return Ai().fetchSmallImages(); },
-		.setter = [=](bool v) { Ai().setFetchSmallImages(v); },
 		.icon = { &st::menuIconSettings },
 	});
 	ayu.addToggle({

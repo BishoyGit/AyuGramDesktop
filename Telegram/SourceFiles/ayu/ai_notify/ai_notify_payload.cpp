@@ -53,92 +53,61 @@ namespace {
 	return u"group"_q;
 }
 
-[[nodiscard]] QByteArray DownscaleEncode(
-		const QImage &source,
-		int maxSide) {
+[[nodiscard]] QByteArray EncodeImage(const QImage &source) {
 	if (source.isNull()) {
 		return {};
 	}
-	auto image = source;
-	if (image.width() > maxSide || image.height() > maxSide) {
-		image = image.scaled(
-			maxSide,
-			maxSide,
-			Qt::KeepAspectRatio,
-			Qt::SmoothTransformation);
-	}
 	auto buffer = QBuffer();
 	buffer.open(QIODevice::WriteOnly);
-	if (!image.save(&buffer, "JPEG", 80)) {
+	if (!source.save(&buffer, "JPEG", 90)) {
 		return {};
 	}
 	return buffer.data();
 }
 
-// Pull the best locally available bytes for a photo. If nothing is cached
-// yet we kick off a small-size download (a few dozen KB) — it may arrive
-// while the notification waits for the batch window / LLM round-trip.
-[[nodiscard]] QImage LoadPhotoImage(
+// Only use Telegram's largest photo variant. Thumbnails can be tiny and
+// misleading for product classification.
+[[nodiscard]] QByteArray LoadPhotoImage(
 		not_null<PhotoData*> photo,
-		not_null<HistoryItem*> item,
-		bool fetchSmall) {
+		not_null<HistoryItem*> item) {
 	const auto view = photo->activeMediaView()
 		? photo->activeMediaView()
 		: photo->createMediaView();
 	const auto origin = Data::FileOrigin(item->fullId());
 
-	for (const auto size : {
-		Data::PhotoSize::Large,
-		Data::PhotoSize::Small,
-		Data::PhotoSize::Thumbnail,
-	}) {
-		auto bytes = view->imageBytes(size);
-		if (!bytes.isEmpty()) {
-			auto image = QImage::fromData(bytes);
-			if (!image.isNull()) {
-				return image;
-			}
+	auto bytes = view->imageBytes(Data::PhotoSize::Large);
+	if (!bytes.isEmpty()) {
+		const auto decoded = QImage::fromData(bytes);
+		if (!decoded.isNull()) {
+			return EncodeImage(decoded);
 		}
 	}
 	if (const auto image = view->image(Data::PhotoSize::Large)) {
-		auto original = image->original();
+		const auto original = image->original();
 		if (!original.isNull()) {
-			return original;
+		return EncodeImage(original);
 		}
 	}
-	if (const auto inline_ = view->thumbnailInline()) {
-		auto image = inline_->original();
-		if (!image.isNull()) {
-			return image;
-		}
-	}
-	if (fetchSmall) {
-		photo->load(
-			Data::PhotoSize::Small,
-			origin,
-			LoadFromCloudOrLocal,
-			false);
-	}
+	view->wanted(Data::PhotoSize::Large, origin);
 	return {};
 }
 
 void CollectPhotoImages(
 		not_null<HistoryItem*> item,
-		std::vector<QByteArray> &to,
-		int maxImages,
-		int imageMaxSide,
-		bool fetchSmall) {
+		Payload &result,
+		int maxImages) {
 	const auto media = item->media();
 	if (!media || !media->photo()) {
 		return;
 	}
-	const auto image = LoadPhotoImage(media->photo(), item, fetchSmall);
-	if (image.isNull() || int(to.size()) >= maxImages) {
+	if (int(result.imagesJpeg.size()) >= maxImages) {
 		return;
 	}
-	auto encoded = DownscaleEncode(image, imageMaxSide);
+	auto encoded = LoadPhotoImage(media->photo(), item);
 	if (!encoded.isEmpty()) {
-		to.push_back(std::move(encoded));
+		result.imagesJpeg.push_back(std::move(encoded));
+	} else if (media->photo()->loading(Data::PhotoSize::Large)) {
+		result.imagesPending = true;
 	}
 }
 
@@ -170,9 +139,7 @@ Payload BuildPayload(
 		bool sendText,
 		int textCap,
 		bool sendImages,
-		int maxImages,
-		int imageMaxSide,
-		bool fetchSmallImages) {
+		int maxImages) {
 	auto result = Payload();
 
 	const auto history = item->history();
@@ -188,7 +155,25 @@ Payload BuildPayload(
 	result.isMention = item->mentionsMe();
 
 	if (sendText) {
-		result.text = Cap(item->notificationText().text, textCap);
+		auto text = item->originalText().text;
+		if (item->groupId()) {
+			if (const auto group = history->owner().groups().find(item)) {
+				auto captions = QStringList();
+				for (const auto &groupItem : group->items) {
+					const auto &caption = groupItem->originalText().text;
+					if (!caption.isEmpty()) {
+						captions.push_back(caption);
+					}
+				}
+				if (!captions.isEmpty()) {
+					text = captions.join(u"\n"_q);
+				}
+			}
+		}
+		if (text.isEmpty()) {
+			text = item->notificationText().text;
+		}
+		result.text = Cap(text, textCap);
 	}
 
 	if (const auto replyTo = item->replyTo(); replyTo.messageId) {
@@ -227,7 +212,6 @@ Payload BuildPayload(
 		if (sendImages) {
 			// For albums collect every photo of the group, not just the
 			// item the notification is attributed to.
-			auto covered = 0;
 			if (const auto group = history->owner().groups().find(item)) {
 				for (const auto &groupItem : group->items) {
 					if (int(result.imagesJpeg.size()) >= maxImages) {
@@ -240,26 +224,13 @@ Payload BuildPayload(
 					if (!groupPhoto) {
 						continue;
 					}
-					++covered;
-					const auto image = LoadPhotoImage(
-						groupPhoto,
-						groupItem,
-						fetchSmallImages);
-					if (image.isNull()) {
-						continue;
-					}
-					auto encoded = DownscaleEncode(image, imageMaxSide);
-					if (!encoded.isEmpty()) {
-						result.imagesJpeg.push_back(std::move(encoded));
-					}
+					CollectPhotoImages(groupItem, result, maxImages);
 				}
 			} else {
 				CollectPhotoImages(
 					item,
-					result.imagesJpeg,
-					maxImages,
-					imageMaxSide,
-					fetchSmallImages);
+					result,
+					maxImages);
 			}
 			if (result.imagesJpeg.empty()) {
 				result.mediaNote = u"(image not loaded yet)"_q;
@@ -286,6 +257,35 @@ Payload BuildPayload(
 	}
 
 	return result;
+}
+
+void RequestLargeImages(not_null<HistoryItem*> item, int maxImages) {
+	const auto request = [](not_null<HistoryItem*> photoItem) {
+		const auto media = photoItem->media();
+		if (media && media->photo()) {
+			const auto view = media->photo()->createMediaView();
+			view->wanted(
+				Data::PhotoSize::Large,
+				Data::FileOrigin(photoItem->fullId()));
+		}
+	};
+	if (item->groupId()) {
+		const auto history = item->history();
+		if (const auto group = history->owner().groups().find(item)) {
+			auto requested = 0;
+			for (const auto &groupItem : group->items) {
+				if (requested >= maxImages) {
+					break;
+				}
+				if (groupItem->media() && groupItem->media()->photo()) {
+					request(groupItem);
+					++requested;
+				}
+			}
+			return;
+		}
+	}
+	request(item);
 }
 
 } // namespace Ayu::AiNotify

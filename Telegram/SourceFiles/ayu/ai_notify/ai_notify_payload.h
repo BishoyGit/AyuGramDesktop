@@ -26,21 +26,21 @@ struct Payload {
 	QString replyText;
 	QString linkPreview;
 	bool isMention = false;
-	std::vector<QByteArray> imagesJpeg; // downscaled JPEG bytes, may be empty
+	bool imagesPending = false;
+	std::vector<QByteArray> imagesJpeg;
 };
 
 // Collects everything known about the message locally: full text, media
 // classification, images (photos only — videos are ignored), reply context
-// and link preview. Never blocks on network: missing images are requested
-// in the background and simply stay absent if they don't arrive in time.
+// and link preview. Images are requested at the largest available size.
 [[nodiscard]] Payload BuildPayload(
 	not_null<HistoryItem*> item,
 	bool anonymizeNames,
 	bool sendText,
 	int textCap,
 	bool sendImages,
-	int maxImages,
-	int imageMaxSide,
-	bool fetchSmallImages);
+	int maxImages);
+
+void RequestLargeImages(not_null<HistoryItem*> item, int maxImages);
 
 } // namespace Ayu::AiNotify

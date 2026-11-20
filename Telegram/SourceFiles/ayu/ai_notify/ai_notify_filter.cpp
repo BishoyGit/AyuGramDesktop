@@ -25,6 +25,7 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QTime>
 #include <QtCore/QTimer>
+#include <QtCore/QUrl>
 #include <gsl/util>
 #include <map>
 
@@ -98,6 +99,14 @@ constexpr auto kLogLimit = 100;
 		}
 	}
 	return {};
+}
+
+[[nodiscard]] bool IsSystemOneEndpoint(const QString &endpoint) {
+	auto path = QUrl(endpoint).path();
+	while (path.endsWith('/')) {
+		path.chop(1);
+	}
+	return path.endsWith(u"/v1/systemone"_q);
 }
 
 [[nodiscard]] QString StripFences(QString text) {
@@ -221,6 +230,74 @@ constexpr auto kLogLimit = 100;
 		}},
 	};
 	return QJsonDocument(body).toJson(QJsonDocument::Compact);
+}
+
+[[nodiscard]] QByteArray ComposeSystemOneRequest(
+		const QJsonArray &items,
+		const QJsonArray &images) {
+	auto questions = QJsonObject();
+	for (const auto &value : items) {
+		const auto id = value.toObject().value(u"id"_q).toInt();
+		questions[u"notification_%1"_q.arg(id)] = QJsonObject{
+			{u"type"_q, u"noul"_q},
+			{u"instructions"_q,
+				u"Use the notification text and attached image(s) to identify "_q
+				+ u"the subject. Is it about a computer or mobile phone, "_q
+				+ u"their accessories, technology parts or supplies, software or "_q
+				+ u"software discounts, or a household appliance such as a kettle, "_q
+				+ u"blender, or vacuum cleaner? Judge only the subject of the offer. "_q
+				+ u"Answer true only for those categories; answer false for all other "_q
+				+ u"topics, including clothing, cosmetics, cleaning products, and food."_q},
+			{u"criteria"_q, QJsonObject{
+				{u"true"_q, u"The subject is in one of the included categories."_q},
+				{u"false"_q, u"The subject is outside the included categories."_q},
+			}},
+		};
+	}
+	const auto state = u"Classify each notification by its id. Its imageIndexes "_q
+		+ u"refer to the images array in order.\n"_q
+		+ QString::fromUtf8(
+			QJsonDocument(items).toJson(QJsonDocument::Compact));
+	auto body = QJsonObject{
+		{u"model"_q, AyuSettings::getInstance().aiNotifySettings().model()},
+		{u"state"_q, state},
+		{u"questions"_q, questions},
+	};
+	if (!images.isEmpty()) {
+		body[u"images"_q] = images;
+	}
+	return QJsonDocument(body).toJson(QJsonDocument::Compact);
+}
+
+[[nodiscard]] std::map<int, std::pair<bool, QString>> ParseSystemOneVerdicts(
+		const QByteArray &raw) {
+	auto result = std::map<int, std::pair<bool, QString>>();
+	const auto doc = QJsonDocument::fromJson(raw);
+	if (!doc.isObject()) {
+		return result;
+	}
+	const auto answers = doc.object().value(u"answers"_q).toObject();
+	for (auto i = answers.begin(); i != answers.end(); ++i) {
+		if (!i.key().startsWith(u"notification_"_q)) {
+			continue;
+		}
+		bool ok = false;
+		const auto id = i.key().mid(13).toInt(&ok);
+		const auto value = i.value().toObject().value(u"noul"_q);
+		if (!ok || id <= 0 || !value.isDouble()) {
+			continue;
+		}
+		const auto probability = value.toDouble();
+		const auto show = probability >= 0.5;
+		result[id] = {
+			show,
+			(show ? u"ضمن الفئات المطلوبة"_q : u"موضوع غير مشمول"_q)
+				+ u" (P(show)="_q
+				+ QString::number(probability, 'f', 2)
+				+ u")"_q,
+		};
+	}
+	return result;
 }
 
 } // namespace
@@ -442,6 +519,9 @@ bool Gate::GateToast(
 	};
 	trackSession(pending.session);
 	pending.alive = _sessionAlive[pending.session];
+	if (ai.sendImages() && item->media() && item->media()->photo()) {
+		RequestLargeImages(item, ai.maxImages());
+	}
 	_pending.push_back(std::move(pending));
 
 	if (ai.batchWindowMs() <= 0) {
@@ -481,31 +561,40 @@ void Gate::flush() {
 			// opened, account logged out) — nothing to show, nothing to say.
 			continue;
 		}
-		validated->push_back({
-			std::move(pending),
-			BuildPayload(
+		auto payload = BuildPayload(
 				item,
 				ai.anonymizeNames(),
 				ai.sendText(),
 				ai.textCap(),
 				ai.sendImages(),
-				ai.maxImages(),
-				ai.imageMaxSide(),
-				ai.fetchSmallImages()),
+				ai.maxImages());
+		if (payload.imagesPending
+			&& crl::now() - pending.enqueued < crl::time(5000)) {
+			_pending.push_back(std::move(pending));
+			continue;
+		}
+		validated->push_back({
+			std::move(pending),
+			std::move(payload),
 			item->history()->peer->name(),
 			crl::now(),
 		});
 	}
 	if (validated->empty()) {
+		if (!_pending.empty()) {
+			_flushTimer->start(250);
+		}
 		return;
 	}
 	for (auto i = 0; i < int(validated->size()); ++i) {
 		(*validated)[i].payload.id = i + 1;
 	}
+	const auto systemOne = IsSystemOneEndpoint(ai.endpoint());
 
 	// Compose the OpenAI-compatible request.
 	auto itemsJson = QJsonArray();
 	auto imagesJson = QJsonArray();
+	auto systemOneImages = QJsonArray();
 	auto imageLegend = QStringList();
 	auto imageIndex = 0;
 	for (const auto &entry : *validated) {
@@ -535,8 +624,11 @@ void Gate::flush() {
 		if (payload.isMention) {
 			object["isMention"] = true;
 		}
+		auto imageIndexes = QJsonArray();
 		for (const auto &image : payload.imagesJpeg) {
 			++imageIndex;
+			imageIndexes.push_back(imageIndex);
+			systemOneImages.push_back(QString::fromLatin1(image.toBase64()));
 			imageLegend.push_back(u"image %1 → id %2"_q
 				.arg(imageIndex)
 				.arg(payload.id));
@@ -547,6 +639,9 @@ void Gate::flush() {
 						+ QString::fromLatin1(image.toBase64()),
 				}},
 			}});
+		}
+		if (systemOne && !imageIndexes.isEmpty()) {
+			object["imageIndexes"] = imageIndexes;
 		}
 		itemsJson.push_back(object);
 	}
@@ -584,6 +679,9 @@ void Gate::flush() {
 			QJsonObject{{"role", "user"}, {"content", userContent}},
 		}},
 	};
+	const auto bodyBytes = systemOne
+		? ComposeSystemOneRequest(itemsJson, systemOneImages)
+		: QJsonDocument(body).toJson(QJsonDocument::Compact);
 
 	const auto started = crl::now();
 	const auto requestId = ++_nextRequestId;
@@ -597,16 +695,18 @@ void Gate::flush() {
 		{
 			.endpoint = ai.endpoint(),
 			.apiKey = ai.apiKey(),
-			.body = QJsonDocument(body).toJson(QJsonDocument::Compact),
+			.body = bodyBytes,
 			.timeoutMs = ai.timeoutMs(),
 		},
-		[this, validated, started, requestId, generation = _generation](
+		[this, validated, started, requestId, systemOne, generation = _generation](
 				const QByteArray &raw) {
 			_inFlightPending.remove(requestId);
 			if (generation != _generation) {
 				return;
 			}
-			auto verdicts = ParseVerdicts(raw);
+			auto verdicts = systemOne
+				? ParseSystemOneVerdicts(raw)
+				: ParseVerdicts(raw);
 			const auto latency = int(crl::now() - started);
 			for (const auto &entry : *validated) {
 				const auto it = verdicts.find(entry.payload.id);
@@ -645,6 +745,9 @@ void Gate::flush() {
 					latency);
 			}
 		});
+	if (!_pending.empty()) {
+		_flushTimer->start(250);
+	}
 }
 
 void Gate::resolve(
@@ -859,17 +962,31 @@ void Gate::TestConnection(Fn<void(QString)> done) {
 		done(u"Endpoint and model must be set first."_q);
 		return;
 	}
-	auto body = QJsonObject{
-		{"model", ai.model()},
-		{"temperature", 0},
-		{"max_tokens", 5},
-		{"messages", QJsonArray{
-			QJsonObject{
-				{"role", "user"},
-				{"content", "Reply with the single word: OK"},
-			},
-		}},
-	};
+	auto body = QJsonObject();
+	const auto systemOne = IsSystemOneEndpoint(ai.endpoint());
+	if (systemOne) {
+		body[u"model"_q] = ai.model();
+		body[u"state"_q] = u"Connection test: smartphone discount offer."_q;
+		body[u"questions"_q] = QJsonObject{
+			{u"connection"_q, QJsonObject{
+				{u"type"_q, u"noul"_q},
+				{u"instructions"_q,
+					u"Is the state about a mobile phone?"_q},
+			}},
+		};
+	} else {
+		body = QJsonObject{
+			{"model", ai.model()},
+			{"temperature", 0},
+			{"max_tokens", 5},
+			{"messages", QJsonArray{
+				QJsonObject{
+					{"role", "user"},
+					{"content", "Reply with the single word: OK"},
+				},
+			}},
+		};
+	}
 	const auto started = crl::now();
 	_client->Send(
 		{
@@ -879,14 +996,20 @@ void Gate::TestConnection(Fn<void(QString)> done) {
 			.timeoutMs = ai.timeoutMs(),
 		},
 		[=](const QByteArray &raw) {
-			const auto content = ExtractContent(raw);
-			if (content.isEmpty()) {
+			const auto content = systemOne
+				? QString::number(QJsonDocument::fromJson(raw).object()
+					.value(u"answers"_q).toObject()
+					.value(u"connection"_q).toObject()
+					.value(u"noul"_q).toDouble(-1), 'f', 3)
+				: ExtractContent(raw);
+		if (content.isEmpty() || (systemOne && content == u"-1"_q)) {
 				done(u"Connected, but unexpected response shape."_q);
 				return;
 			}
 			done(u"OK ("_q
 				+ QString::number(int(crl::now() - started))
 				+ u" ms): "_q
+				+ (systemOne ? u"category probability="_q : QString())
 				+ content.left(60));
 		},
 		[=](QString error) {
@@ -909,7 +1032,14 @@ void Gate::TestVerdict(Fn<void(QString)> done) {
 		.mediaKind = u"text"_q,
 	};
 	const auto started = crl::now();
-	const auto body = ComposeSingleRequest(sample, ai.systemPrompt());
+	const auto systemOne = IsSystemOneEndpoint(ai.endpoint());
+	const auto body = systemOne
+		? ComposeSystemOneRequest(QJsonArray{QJsonObject{
+			{u"id"_q, 1},
+			{u"text"_q, sample.text},
+			{u"media"_q, sample.mediaKind},
+		}}, QJsonArray())
+		: ComposeSingleRequest(sample, ai.systemPrompt());
 	_client->Send(
 		{
 			.endpoint = ai.endpoint(),
@@ -918,7 +1048,18 @@ void Gate::TestVerdict(Fn<void(QString)> done) {
 			.timeoutMs = ai.timeoutMs(),
 		},
 		[=](const QByteArray &raw) {
-			const auto content = ExtractContent(raw);
+			const auto content = systemOne
+				? [&] {
+					const auto verdicts = ParseSystemOneVerdicts(raw);
+					const auto i = verdicts.find(1);
+					return (i == verdicts.end())
+						? QString()
+						: ((i->second.first
+							? u"show=true; "_q
+							: u"show=false; "_q)
+							+ i->second.second);
+				}()
+				: ExtractContent(raw);
 			done(u"("_q
 				+ QString::number(int(crl::now() - started))
 				+ u" ms) "_q

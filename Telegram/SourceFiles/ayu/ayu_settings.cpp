@@ -465,19 +465,6 @@ void AiNotifySettings::setMaxImages(int val) {
 	AyuSettings::save();
 }
 
-void AiNotifySettings::setImageMaxSide(int val) {
-	val = std::clamp(val, 64, 2048);
-	if (_imageMaxSide.current() == val) return;
-	_imageMaxSide = val;
-	AyuSettings::save();
-}
-
-void AiNotifySettings::setFetchSmallImages(bool val) {
-	if (_fetchSmallImages.current() == val) return;
-	_fetchSmallImages = val;
-	AyuSettings::save();
-}
-
 void AiNotifySettings::setAnonymizeNames(bool val) {
 	if (_anonymizeNames.current() == val) return;
 	_anonymizeNames = val;
@@ -533,8 +520,6 @@ void to_json(nlohmann::json &j, const AiNotifySettings &s) {
 		{"textCap", s._textCap.current()},
 		{"sendImages", s._sendImages.current()},
 		{"maxImages", s._maxImages.current()},
-		{"imageMaxSide", s._imageMaxSide.current()},
-		{"fetchSmallImages", s._fetchSmallImages.current()},
 		{"anonymizeNames", s._anonymizeNames.current()},
 		{"keywordRules", s._keywordRules.current().toStdString()},
 		{"vipIds", s._vipIds},
@@ -560,8 +545,6 @@ void from_json(const nlohmann::json &j, AiNotifySettings &s) {
 	s._textCap = j.value("textCap", 4000);
 	s._sendImages = j.value("sendImages", true);
 	s._maxImages = j.value("maxImages", 4);
-	s._imageMaxSide = j.value("imageMaxSide", 768);
-	s._fetchSmallImages = j.value("fetchSmallImages", true);
 	s._anonymizeNames = j.value("anonymizeNames", false);
 	s._keywordRules = QString::fromStdString(j.value("keywordRules", ""));
 	if (j.contains("vipIds")) {

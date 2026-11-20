@@ -2,6 +2,9 @@ name: Build Windows (AI notification filter)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/ai-notify-systemone-fullsize
 
 jobs:
   windows-x64:
