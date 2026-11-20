@@ -156,6 +156,10 @@ Payload BuildPayload(
 
 	if (sendText) {
 		auto text = item->originalText().text;
+		if (item->groupId()
+			&& !history->owner().groups().find(item)) {
+			result.textPending = true;
+		}
 		if (item->groupId()) {
 			if (const auto group = history->owner().groups().find(item)) {
 				auto captions = QStringList();

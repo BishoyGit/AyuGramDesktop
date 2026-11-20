@@ -568,7 +568,7 @@ void Gate::flush() {
 				ai.textCap(),
 				ai.sendImages(),
 				ai.maxImages());
-		if (payload.imagesPending
+		if ((payload.textPending || payload.imagesPending)
 			&& crl::now() - pending.enqueued < crl::time(5000)) {
 			_pending.push_back(std::move(pending));
 			continue;

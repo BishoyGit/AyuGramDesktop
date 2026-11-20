@@ -26,6 +26,7 @@ struct Payload {
 	QString replyText;
 	QString linkPreview;
 	bool isMention = false;
+	bool textPending = false;
 	bool imagesPending = false;
 	std::vector<QByteArray> imagesJpeg;
 };
